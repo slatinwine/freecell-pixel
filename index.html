@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>像素空档接龙 FREECELL</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#1a1c2c; --bg2:#24283f; --bg3:#2e3350;
+    --card:#f4f4e8; --ink:#16151f; --line:#0d0c16;
+    --red:#e43b44; --blk:#20233a;
+    --gold:#ffd75e; --green:#38b764; --blue:#3b5dc9; --cyan:#41a6f6;
+    --cw:70px; --ch:100px; --gap:8px;
+    --pix:'Press Start 2P','Courier New',monospace;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;}
+  body{
+    background:
+      radial-gradient(circle at 50% 0%, #262a44 0%, var(--bg) 55%),
+      var(--bg);
+    color:#d8dbea;
+    font-family:var(--pix);
+    user-select:none;
+    overflow-x:hidden;
+    display:flex; flex-direction:column; align-items:center;
+  }
+  /* CRT 扫描线 */
+  body::after{
+    content:''; position:fixed; inset:0; pointer-events:none; z-index:5000;
+    background:repeating-linear-gradient(0deg, rgba(0,0,0,.14) 0 1px, transparent 1px 3px);
+    mix-blend-mode:multiply;
+  }
+
+  header{margin-top:14px; text-align:center;}
+  h1{
+    font-family:var(--pix);
+    font-size:clamp(16px,3.4vw,26px);
+    color:var(--gold);
+    letter-spacing:2px;
+    text-shadow:3px 3px 0 var(--line), 6px 6px 0 rgba(0,0,0,.35);
+  }
+  .sub{font-size:clamp(9px,1.6vw,11px); color:#8b90b5; margin-top:8px; letter-spacing:1px;}
+  .sub b{color:var(--cyan);}
+
+  #game{position:relative; margin:12px 0 4px;}
+
+  /* ---- 槽位 ---- */
+  .slot{
+    position:absolute; width:var(--cw); height:var(--ch);
+    border:3px solid #3a3f63;
+    background:rgba(0,0,0,.28);
+    box-shadow:inset 3px 3px 0 rgba(0,0,0,.4);
+    display:flex; align-items:center; justify-content:center;
+    color:#4b517e; font-size:calc(var(--cw)*.42);
+  }
+  .slot.found-s{color:#5b628f; font-size:calc(var(--cw)*.30);}
+  .slot.tabslot{border-style:dashed; border-color:#333754;}
+  .slot.hint, .card.hint{animation:hintBlink .3s steps(2) 4;}
+  @keyframes hintBlink{50%{box-shadow:0 0 0 4px var(--gold), 4px 4px 0 rgba(0,0,0,.5);}}
+
+  /* ---- 牌 ---- */
+  .card{
+    position:absolute; left:0; top:0;
+    width:var(--cw); height:var(--ch);
+    background:var(--card);
+    border:3px solid var(--line);
+    box-shadow:4px 4px 0 rgba(0,0,0,.45);
+    cursor:pointer;
+    transition:transform .16s steps(4);
+    font-size:calc(var(--cw)*.24);
+    will-change:transform;
+  }
+  .card .tl,.card .br{
+    position:absolute; line-height:1;
+    font-family:var(--pix);
+    font-size:calc(var(--cw)*.22);
+    display:flex; flex-direction:column; align-items:center; gap:1px;
+  }
+  .card .tl{left:5%; top:6%;}
+  .card .br{right:5%; bottom:6%; transform:rotate(180deg);}
+  .card .big{
+    position:absolute; left:50%; top:50%;
+    transform:translate(-50%,-50%);
+    font-size:calc(var(--cw)*.52);
+  }
+  .card.red{color:var(--red);}
+  .card.black{color:var(--blk);}
+  .card.sel{
+    outline:3px solid var(--gold);
+    animation:selBlink .5s steps(2) infinite;
+  }
+  @keyframes selBlink{50%{outline-color:transparent;}}
+  .card.shake{animation:shk .25s steps(2) 2;}
+  @keyframes shk{25%{margin-left:-4px;}75%{margin-left:4px;}}
+
+  /* ---- 顶栏 / 按钮 ---- */
+  #hud{
+    width:min(96vw,960px);
+    display:flex; flex-wrap:wrap; gap:8px; align-items:center; justify-content:space-between;
+    margin:4px 0 14px;
+  }
+  #stats{font-size:10px; color:#9aa0c7; letter-spacing:1px; line-height:1.9;}
+  #stats b{color:var(--gold);}
+  .btns{display:flex; gap:8px; flex-wrap:wrap; justify-content:center;}
+  button{
+    font-family:inherit; font-size:10px; letter-spacing:1px;
+    color:#fff; background:var(--blue);
+    border:3px solid var(--line);
+    box-shadow:3px 3px 0 var(--line);
+    padding:9px 12px; cursor:pointer;
+  }
+  button:hover{filter:brightness(1.12);}
+  button:active{transform:translate(3px,3px); box-shadow:none;}
+  button.alt{background:#5d275d;}
+  button.grn{background:var(--green); color:#0c2a18;}
+  button.tog{background:#3a3f63;}
+
+  footer{font-size:9px; color:#6d729c; letter-spacing:1px; text-align:center; line-height:2; margin-bottom:18px; padding:0 12px;}
+
+  /* ---- 胜利 ---- */
+  #fx{position:fixed; inset:0; z-index:4000; pointer-events:none;}
+  #winbox{
+    position:fixed; inset:0; z-index:4500; display:none;
+    align-items:center; justify-content:center; background:rgba(10,10,20,.55);
+  }
+  #winbox.show{display:flex;}
+  .winpanel{
+    background:var(--bg2); border:4px solid var(--line);
+    box-shadow:8px 8px 0 rgba(0,0,0,.5);
+    padding:28px 34px; text-align:center;
+    animation:pop .3s steps(4);
+  }
+  @keyframes pop{from{transform:scale(.4);}}
+  .winpanel h2{font-family:var(--pix); color:var(--gold); font-size:20px; text-shadow:3px 3px 0 var(--line); margin-bottom:14px;}
+  .winpanel p{font-size:11px; color:#c7cbec; line-height:2; margin-bottom:18px;}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>FREECELL</h1>
+  <div class="sub">像素空档接龙 · GAME <b id="gnum">#00000</b></div>
+</header>
+
+<div id="game"></div>
+
+<div id="hud">
+  <div id="stats"></div>
+  <div class="btns">
+    <button class="grn" id="bNew">新一局</button>
+    <button id="bRestart">重玩本局</button>
+    <button id="bUndo">撤销</button>
+    <button id="bHint">提示</button>
+    <button class="tog" id="bSnd">音效:开</button>
+  </div>
+</div>
+
+<footer>
+  点击选牌 → 点击目标放置 · 双击自动送上基础堆 · ESC 取消选择<br>
+  红黑交替叠放，借助 4 个自由单元腾挪，把 4 种花色各从 A 排到 K 即获胜
+</footer>
+
+<canvas id="fx"></canvas>
+<div id="winbox">
+  <div class="winpanel">
+    <h2>★ YOU WIN! ★</h2>
+    <p id="winText"></p>
+    <button class="grn" id="bAgain">再 来 一 局</button>
+  </div>
+</div>
+
+<script>
+'use strict';
+/* ================= 基础数据 ================= */
+const SUITS=['♠','♥','♦','♣'];
+const RED=[false,true,true,false];
+const RANKS=['','A','2','3','4','5','6','7','8','9','10','J','Q','K'];
+const SAVE_KEY='freecell-pixel-save-v1';
+
+const game=document.getElementById('game');
+let S=null;                 // {seed, tab[8][], cells[4], found[4], moves, time, hist[]}
+let sel=null;               // 选中位置 {kind:'tab',i,j} 或 {kind:'cell',i}
+let won=false, sndOn=true;
+let GEO={cw:70,ch:100,gap:8,totalW:0,topY:0,maxH:600}; // 布局几何
+const els={};               // cardKey -> DOM
+
+/* ================= 音效 (WebAudio 8-bit) ================= */
+let AC=null;
+function ac(){ if(!AC) AC=new (window.AudioContext||window.webkitAudioContext)(); if(AC.state==='suspended')AC.resume(); return AC; }
+function beep(freq,dur,type='square',vol=0.12,delay=0){
+  if(!sndOn) return;
+  try{
+    const c=ac(), t=c.currentTime+delay;
+    const o=c.createOscillator(), g=c.createGain();
+    o.type=type; o.frequency.value=freq;
+    g.gain.setValueAtTime(vol,t);
+    g.gain.exponentialRampToValueAtTime(0.001,t+dur);
+    o.connect(g).connect(c.destination);
+    o.start(t); o.stop(t+dur+0.02);
+  }catch(e){}
+}
+const sfx={
+  select:()=>beep(660,.05),
+  place:()=>{beep(440,.05);beep(587,.07,'square',.12,.05);},
+  found:()=>{beep(784,.06);beep(1046,.09,'square',.12,.06);},
+  bad:()=>beep(110,.16,'sawtooth',.1),
+  undo:()=>beep(330,.08,'triangle'),
+  win:()=>{[523,659,784,1046,784,1046,1318].forEach((f,i)=>beep(f,.12,'square',.13,i*.11));}
+};
+
+/* ================= 随机 & 发牌 ================= */
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+function deal(seed){
+  const rnd=mulberry32(seed);
+  const deck=[];
+  for(let s=0;s<4;s++)for(let r=1;r<=13;r++)deck.push({s,r});
+  for(let i=deck.length-1;i>0;i--){const j=Math.floor(rnd()*(i+1));[deck[i],deck[j]]=[deck[j],deck[i]];}
+  const tab=[[],[],[],[],[],[],[],[]];
+  deck.forEach((c,i)=>tab[i%8].push(c));
+  return {seed,tab,cells:[null,null,null,null],found:[0,0,0,0],moves:0,time:0,hist:[]};
+}
+
+/* ================= 布局 ================= */
+function layout(){
+  const W=Math.min(window.innerWidth-16,960);
+  const gap=Math.max(5,Math.min(10,Math.round(W*0.011)));
+  let cw=Math.floor((W-7*gap)/8); cw=Math.min(cw,80);
+  const ch=Math.round(cw*1.42);
+  const totalW=8*cw+7*gap;
+  const availH=window.innerHeight-document.querySelector('header').offsetHeight
+    -document.getElementById('hud').offsetHeight-90;
+  const maxH=Math.max(ch*2.2, availH);
+  GEO={cw,ch,gap,totalW,topY:ch+Math.round(ch*0.22),maxH};
+  document.documentElement.style.setProperty('--cw',cw+'px');
+  document.documentElement.style.setProperty('--ch',ch+'px');
+  document.documentElement.style.setProperty('--gap',gap+'px');
+  game.style.width=totalW+'px';
+  game.style.height=(GEO.topY+maxH)+'px';
+}
+const colX=i=>i*(GEO.cw+GEO.gap);
+
+/* ================= DOM 构建 ================= */
+function buildDOM(){
+  game.innerHTML='';
+  for(const k in els) delete els[k];
+  // 槽位:4 自由单元
+  for(let i=0;i<4;i++){
+    const d=document.createElement('div');
+    d.className='slot'; d.dataset.loc='cell.'+i;
+    d.style.transform=`translate(${colX(i)}px,0px)`;
+    d.textContent='▢';
+    game.appendChild(d);
+  }
+  // 槽位:4 基础堆
+  for(let s=0;s<4;s++){
+    const d=document.createElement('div');
+    d.className='slot found-s'; d.dataset.loc='found.'+s;
+    d.style.transform=`translate(${colX(4+s)}px,0px)`;
+    d.innerHTML=SUITS[s]+'<div style="font-size:calc(var(--cw)*.16);margin-top:4px">A→K</div>';
+    game.appendChild(d);
+  }
+  // 列底虚线框
+  for(let i=0;i<8;i++){
+    const d=document.createElement('div');
+    d.className='slot tabslot'; d.dataset.loc='tab.'+i+'.-1';
+    d.style.transform=`translate(${colX(i)}px,${GEO.topY}px)`;
+    game.appendChild(d);
+  }
+  // 52 张牌
+  for(let s=0;s<4;s++)for(let r=1;r<=13;r++){
+    const d=document.createElement('div');
+    d.className='card '+(RED[s]?'red':'black');
+    d.dataset.loc=`card.${s}.${r}`;
+    d.innerHTML=`<span class="tl">${RANKS[r]}<i style="font-style:normal">${SUITS[s]}</i></span>`+
+      `<span class="big">${SUITS[s]}</span>`+
+      `<span class="br">${RANKS[r]}<i style="font-style:normal">${SUITS[s]}</i></span>`;
+    game.appendChild(d);
+    els[s+'_'+r]=d;
+  }
+}
+
+/* ================= 渲染 ================= */
+function colOffset(n){
+  const base=Math.round(GEO.ch*0.30);
+  if(n<=1) return base;
+  return Math.min(base,(GEO.maxH-GEO.ch)/(n-1));
+}
+function place(card,x,y,z){
+  const el=els[card.s+'_'+card.r];
+  el.style.transform=`translate(${x}px,${y}px)`;
+  el.style.zIndex=z;
+  return el;
+}
+function render(){
+  let contentH=GEO.ch;
+  S.tab.forEach((pile,i)=>{
+    const off=colOffset(pile.length);
+    contentH=Math.max(contentH,pile.length?(pile.length-1)*off+GEO.ch:0);
+    pile.forEach((c,j)=>{
+      const el=place(c,colX(i),GEO.topY+j*off,j+10);
+      el.dataset.loc=`tab.${i}.${j}`;
+      el.classList.toggle('sel',!!(sel&&sel.kind==='tab'&&sel.i===i&&j>=sel.j));
+    });
+  });
+  game.style.height=(GEO.topY+contentH+6)+'px';
+  S.cells.forEach((c,i)=>{
+    if(c){const el=place(c,colX(i),0,150+i);
+      el.dataset.loc='cellcard.'+i;
+      el.classList.toggle('sel',!!(sel&&sel.kind==='cell'&&sel.i===i));
+    }
+  });
+  S.found.forEach((n,s)=>{
+    for(let r=1;r<=n;r++){
+      const el=place({s,r},colX(4+s),0,200+s*15+r);
+      el.dataset.loc='foundcard.'+s;
+      el.classList.remove('sel');
+    }
+  });
+  document.getElementById('stats').innerHTML=
+    `局 <b>#${String(S.seed).padStart(5,'0')}</b> · 步数 <b>${S.moves}</b> · 时间 <b>${fmt(S.time)}</b><br>`+
+    `空位 <b>${S.cells.filter(x=>!x).length}</b> · 单次可移 <b>${maxMovable(false)}</b> 张`;
+  document.getElementById('bUndo').disabled=!S.hist.length;
+  document.getElementById('bUndo').style.opacity=S.hist.length?1:.4;
+}
+function fmt(t){const m=Math.floor(t/60),s=t%60;return String(m).padStart(2,'0')+':'+String(s).padStart(2,'0');}
+
+/* ================= 规则 ================= */
+function isRunAt(i,j){
+  const p=S.tab[i];
+  if(j<0||j>=p.length) return false;
+  for(let k=j;k<p.length-1;k++){
+    if(p[k].r!==p[k+1].r+1) return false;
+    if(RED[p[k].s]===RED[p[k+1].s]) return false;
+  }
+  return true;
+}
+function maxMovable(toEmptyCol){
+  const f=S.cells.filter(x=>!x).length;
+  let e=S.tab.filter(p=>!p.length).length;
+  if(toEmptyCol) e=Math.max(0,e-1);
+  return (f+1)*Math.pow(2,e);
+}
+function seqFrom(loc){
+  if(loc.kind==='cell') return [S.cells[loc.i]];
+  return S.tab[loc.i].slice(loc.j);
+}
+function canFound(c){ return S.found[c.s]===c.r-1; }
+
+function doMove(loc,dst){
+  const seq=seqFrom(loc);
+  // —— 校验 ——
+  if(dst.kind==='found'){
+    if(seq.length!==1||!canFound(seq[0])) return false;
+  }else if(dst.kind==='cell'){
+    if(seq.length!==1||S.cells[dst.i]) return false;
+  }else{
+    const p=S.tab[dst.i];
+    if(p.length){
+      const top=p[p.length-1], h=seq[0];
+      if(top.r!==h.r+1||RED[top.s]===RED[h.s]) return false;
+      if(seq.length>maxMovable(false)) return false;
+    }else{
+      if(seq.length>maxMovable(true)) return false;
+    }
+  }
+  // —— 记录历史 ——
+  S.hist.push(JSON.stringify({tab:S.tab,cells:S.cells,found:S.found,moves:S.moves}));
+  if(S.hist.length>300) S.hist.shift();
+  // —— 执行 ——
+  if(loc.kind==='cell') S.cells[loc.i]=null;
+  else S.tab[loc.i].length=loc.j;
+  if(dst.kind==='found') S.found[seq[0].s]=seq[0].r;
+  else if(dst.kind==='cell') S.cells[dst.i]=seq[0];
+  else S.tab[dst.i].push(...seq);
+  S.moves++;
+  clearSel();
+  if(dst.kind==='found') sfx.found(); else sfx.place();
+  render(); save();
+  if(S.found.reduce((a,b)=>a+b,0)===52) onWin();
+  return true;
+}
+
+/* ================= 交互 ================= */
+function clearSel(){sel=null;}
+function parseLoc(l){const a=l.split('.');return{kind:a[0],i:+a[1],j:a[2]!==undefined?+a[2]:undefined};}
+
+game.addEventListener('click',e=>{
+  if(won) return;
+  const t=e.target.closest('.card,.slot');
+  if(!t){clearSel();render();return;}
+  ac();
+  const loc=parseLoc(t.dataset.loc);
+  tap(loc);
+});
+game.addEventListener('dblclick',e=>{
+  if(won) return;
+  const t=e.target.closest('.card');
+  if(!t) return;
+  ac();
+  const loc=parseLoc(t.dataset.loc);
+  if(loc.kind==='tab'&&loc.j===S.tab[loc.i].length-1){
+    if(doMove({kind:'tab',i:loc.i,j:loc.j},{kind:'found',i:S.tab[loc.i][loc.j].s})) return;
+  }
+  if(loc.kind==='cellcard'){ const c=S.cells[loc.i]; if(doMove({kind:'cell',i:loc.i},{kind:'found',i:c.s})) return; }
+});
+function tap(loc){
+  switch(loc.kind){
+    case 'found':{
+      if(sel) tryMoveTo({kind:'found',i:loc.i});
+      break;}
+    case 'cell':{ // 空 cell 槽
+      if(sel) tryMoveTo({kind:'cell',i:loc.i});
+      break;}
+    case 'cellcard':{ // cell 中的牌
+      if(sel&&sel.kind==='cell'&&sel.i===loc.i){clearSel();sfx.select();render();return;}
+      if(!sel){sel={kind:'cell',i:loc.i};sfx.select();render();return;}
+      // 已有选中：尝试移入该 cell，失败则改选这张牌
+      const keep=sel; sel={kind:'cell',i:loc.i};
+      if(!doMove(keep,{kind:'cell',i:loc.i})){ sfx.bad(); render(); }
+      return;}
+    case 'tab':{
+      if(sel){ tryMoveTo({kind:'tab',i:loc.i}); return; }
+      if(loc.j<0) return;
+      if(isRunAt(loc.i,loc.j)){
+        sel={kind:'tab',i:loc.i,j:loc.j}; sfx.select(); render();
+      }else shakeAt(loc);
+      break;}
+    case 'card':{ // 落在 foundation 摞里的牌
+      if(sel) tryMoveTo({kind:'found',i:loc.i});
+      break;}
+  }
+}
+function tryMoveTo(dst){
+  if(!sel) return;
+  if(doMove(sel,dst)) return;
+  sfx.bad();
+  flashInvalid(dst);
+}
+function flashInvalid(dst){
+  let el=null;
+  if(dst.kind==='tab'){
+    const p=S.tab[dst.i];
+    el=p.length?els[p[p.length-1].s+'_'+p[p.length-1].r]
+      :game.querySelector(`.tabslot[data-loc="tab.${dst.i}.-1"]`);
+  }else if(dst.kind==='found'){
+    el=game.querySelectorAll('.found-s')[dst.i];
+  }
+  if(el){el.classList.add('shake');setTimeout(()=>el.classList.remove('shake'),600);}
+}
+function shakeAt(loc){
+  const p=S.tab[loc.i], c=p[loc.j]||p[p.length-1];
+  if(!c) return;
+  const el=els[c.s+'_'+c.r];
+  el.classList.add('shake'); setTimeout(()=>el.classList.remove('shake'),600);
+  sfx.bad();
+}
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'){clearSel();render();}
+  if(e.key==='z'&&(e.ctrlKey||e.metaKey)){e.preventDefault();undo();}
+});
+
+/* ================= 撤销 / 存档 ================= */
+function undo(){
+  if(!S.hist.length||won) return;
+  const st=JSON.parse(S.hist.pop());
+  S.tab=st.tab; S.cells=st.cells; S.found=st.found; S.moves=st.moves;
+  clearSel(); sfx.undo(); render(); save();
+}
+function save(){
+  try{localStorage.setItem(SAVE_KEY,JSON.stringify(S));}catch(e){}
+}
+function loadSave(){
+  try{
+    const d=JSON.parse(localStorage.getItem(SAVE_KEY));
+    if(d&&d.tab&&d.tab.length===8) return d;
+  }catch(e){}
+  return null;
+}
+
+/* ================= 提示 ================= */
+function findHint(){
+  // 1) 任意顶张/自由单元可上基础堆
+  for(let i=0;i<8;i++){const p=S.tab[i];if(p.length&&canFound(p[p.length-1]))return[{kind:'tab',i,j:p.length-1},{kind:'found',i:p[p.length-1].s}];}
+  for(let i=0;i<4;i++){if(S.cells[i]&&canFound(S.cells[i]))return[{kind:'cell',i},{kind:'found',i:S.cells[i].s}];}
+  // 2) 列间搬移(目标非空,优先长序列)
+  let best=null;
+  for(let i=0;i<8;i++){
+    const p=S.tab[i]; if(!p.length)continue;
+    for(let j=0;j<p.length;j++){
+      if(!isRunAt(i,j))continue;
+      const h=p[j]; if(j===0)continue; // 整列搬走无意义(仅当j>0)
+      for(let k=0;k<8;k++){
+        if(k===i||!S.tab[k].length)continue;
+        const top=S.tab[k][S.tab[k].length-1];
+        if(top.r===h.r+1&&RED[top.s]!==RED[h.s]&&p.length-j<=maxMovable(false))
+          if(!best||p.length-j>best.len) best={len:p.length-j,a:{kind:'tab',i,j},b:{kind:'tab',i:k}};
+      }
+    }
+  }
+  if(best) return [best.a,best.b];
+  // 3) 移到空列
+  for(let i=0;i<8;i++){
+    const p=S.tab[i]; if(!p.length)continue;
+    for(let j=1;j<p.length;j++){
+      if(!isRunAt(i,j)||p.length-j>maxMovable(true))continue;
+      for(let k=0;k<8;k++) if(k!==i&&!S.tab[k].length) return [{kind:'tab',i,j},{kind:'tab',i:k}];
+    }
+  }
+  // 4) 顶张进自由单元
+  for(let i=0;i<8;i++){const p=S.tab[i];if(p.length){const f=S.cells.indexOf(null);if(f>=0)return[{kind:'tab',i,j:p.length-1},{kind:'cell',i:f}];}}
+  return null;
+}
+function showHint(){
+  if(won) return;
+  const h=findHint();
+  if(!h){beep(200,.2,'sawtooth');return;}
+  const [a,b]=h;
+  const elA=locEl(a), elB=locEl(b);
+  [elA,elB].forEach(el=>{if(el){el.classList.add('hint');setTimeout(()=>el.classList.remove('hint'),1300);}});
+  sfx.select();
+}
+function locEl(l){
+  if(l.kind==='cell'){return S.cells[l.i]?els[S.cells[l.i].s+'_'+S.cells[l.i].r]:game.querySelectorAll('.slot')[l.i];}
+  if(l.kind==='found'){
+    const n=S.found[l.i];
+    return n>0?els[l.i+'_'+n]:game.querySelectorAll('.found-s')[l.i];
+  }
+  const p=S.tab[l.i];
+  return p.length?els[p[l.j!==undefined?l.j:p.length-1].s+'_'+p[l.j!==undefined?l.j:p.length-1].r]
+    :game.querySelector(`.tabslot[data-loc="tab.${l.i}.-1"]`);
+}
+
+/* ================= 计时 ================= */
+let timerId=null;
+function startTimer(){
+  stopTimer();
+  timerId=setInterval(()=>{if(!won&&S){S.time++;document.getElementById('stats').innerHTML=
+    `局 <b>#${String(S.seed).padStart(5,'0')}</b> · 步数 <b>${S.moves}</b> · 时间 <b>${fmt(S.time)}</b><br>`+
+    `空位 <b>${S.cells.filter(x=>!x).length}</b> · 单次可移 <b>${maxMovable(false)}</b> 张`;save();}},1000);
+}
+function stopTimer(){if(timerId){clearInterval(timerId);timerId=null;}}
+
+/* ================= 胜利动画 ================= */
+function onWin(){
+  won=true; stopTimer(); clearSel(); render();
+  try{localStorage.removeItem(SAVE_KEY);}catch(e){}
+  sfx.win();
+  document.getElementById('winText').innerHTML=
+    `第 #${String(S.seed).padStart(5,'0')} 局通关！<br>用时 ${fmt(S.time)} · 共 ${S.moves} 步`;
+  cascade();
+  setTimeout(()=>document.getElementById('winbox').classList.add('show'),1800);
+}
+function cascade(){
+  const cv=document.getElementById('fx'), ctx=cv.getContext('2d');
+  cv.width=innerWidth; cv.height=innerHeight;
+  ctx.imageSmoothingEnabled=false;
+  const rect=game.getBoundingClientRect();
+  const cards=[];
+  for(let r=13;r>=1;r--)for(let s=0;s<4;s++){
+    if(S.found[s]>=r) cards.push({s,r});
+  }
+  let idx=0, active=null, delay=0, running=true;
+  function drawCard(c,x,y){
+    const w=GEO.cw,h=GEO.ch;
+    ctx.fillStyle='#f4f4e8'; ctx.fillRect(x,y,w,h);
+    ctx.strokeStyle='#0d0c16'; ctx.lineWidth=3; ctx.strokeRect(x+1.5,y+1.5,w-3,h-3);
+    ctx.fillStyle=RED[c.s]?'#e43b44':'#20233a';
+    ctx.font=`bold ${Math.round(w*.22)}px monospace`; ctx.textAlign='left'; ctx.textBaseline='top';
+    ctx.fillText(RANKS[c.r]+SUITS[c.s],x+5,y+4);
+    ctx.font=`${Math.round(w*.5)}px monospace`; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(SUITS[c.s],x+w/2,y+h/2+2);
+  }
+  function step(){
+    if(!running) return;
+    if(!active){
+      if(idx>=cards.length) return;
+      if(delay++<10){requestAnimationFrame(step);return;}
+      delay=0;
+      const c=cards[idx++];
+      active={c,x:rect.left+colX(4+c.s),y:rect.top,vx:(Math.random()*8+2)*(Math.random()<.5?-1:1),vy:-(Math.random()*4+1)};
+    }
+    const a=active;
+    a.vy+=0.55; a.x+=a.vx; a.y+=a.vy;
+    if(a.y>cv.height-GEO.ch){a.y=cv.height-GEO.ch;a.vy*=-0.82;}
+    drawCard(a.c,a.x,a.y);
+    if(a.x<-GEO.cw-20||a.x>cv.width+20) active=null;
+    requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+
+/* ================= 新局 / 按钮 ================= */
+function newGame(seed){
+  S=deal(seed===undefined?Math.floor(Math.random()*100000):seed);
+  sel=null; won=false;
+  document.getElementById('winbox').classList.remove('show');
+  const cv=document.getElementById('fx'); cv.getContext('2d').clearRect(0,0,cv.width,cv.height);
+  document.getElementById('gnum').textContent='#'+String(S.seed).padStart(5,'0');
+  render(); save(); startTimer();
+}
+document.getElementById('bNew').onclick=()=>{ac();newGame();};
+document.getElementById('bAgain').onclick=()=>{ac();newGame();};
+document.getElementById('bRestart').onclick=()=>{ac();newGame(S.seed);};
+document.getElementById('bUndo').onclick=()=>{ac();undo();};
+document.getElementById('bHint').onclick=()=>{ac();showHint();};
+document.getElementById('bSnd').onclick=e=>{
+  sndOn=!sndOn; e.target.textContent='音效:'+(sndOn?'开':'关');
+  if(sndOn){ac();sfx.select();}
+};
+
+/* ================= 启动 ================= */
+function boot(){
+  layout(); buildDOM();
+  const saved=loadSave();
+  if(saved){S=saved;won=false;document.getElementById('gnum').textContent='#'+String(S.seed).padStart(5,'0');render();startTimer();}
+  else newGame();
+}
+window.addEventListener('resize',()=>{layout();
+  // 重新摆放槽位
+  game.querySelectorAll('.slot').forEach(d=>{
+    const l=parseLoc(d.dataset.loc);
+    if(l.kind==='tab') d.style.transform=`translate(${colX(l.i)}px,${GEO.topY}px)`;
+    else if(l.kind==='cell') d.style.transform=`translate(${colX(l.i)}px,0px)`;
+    else d.style.transform=`translate(${colX(4+l.i)}px,0px)`;
+  });
+  if(S) render();
+});
+boot();
+</script>
+</body>
+</html>
